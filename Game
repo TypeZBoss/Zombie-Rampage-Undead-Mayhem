@@ -1,0 +1,305 @@
+```python
+import pygame
+import sys
+import math
+import random
+
+# Initialize Pygame
+pygame.init()
+
+# Constants
+WIDTH, HEIGHT = 1000, 800
+FPS = 60
+
+# Player
+player_size = 20
+player_x, player_y = WIDTH // 2, HEIGHT // 2
+player_speed = 5
+player_angle = 0
+player_health = 100
+player_hit_cooldown = 2000  # in milliseconds
+last_hit_time = 0
+
+# Bullet
+bullet_speed = 10
+bullet_radius = 5
+bullet_cooldown = 500  # in milliseconds
+last_shot_time = 0
+bullets = []
+
+# Special ability (speed boost)
+special_cooldown = 5000  # in milliseconds (5 seconds)
+special_duration = 7000  # in milliseconds (7 seconds)
+last_special_time = 0
+special_active = False  # Flag to track if special ability is active
+
+# Zombies
+zombies = []
+
+# Healing items
+healing_items = []
+
+# Kill counter
+kill_count = 0
+
+# Game state
+game_over = False
+game_start = False
+
+# Font
+font = pygame.font.Font(None, 36)
+
+# Function to create a zombie
+def create_zombie():
+    zombie_size = random.randint(40, 60)
+    zombie_x, zombie_y = random.randint(0, WIDTH), random.randint(0, HEIGHT)
+    zombie_strength = random.randint(1, 10)
+    zombies.append((zombie_x, zombie_y, zombie_size, zombie_strength))
+
+# Function to create a healing item only if player's health is not full
+def create_healing_item():
+    if player_health < 100:
+        heal_x, heal_y = random.randint(0, WIDTH), random.randint(0, HEIGHT)
+        healing_items.append((heal_x, heal_y))
+
+# Function to display starting screen
+def show_start_screen():
+    screen.fill((255, 255, 255))
+    title_text = font.render("Zombie Rampage: Undead Mayhem", True, (0, 0, 0))
+    start_text = font.render("Press SPACE to start", True, (0, 0, 0))
+    screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, HEIGHT // 3))
+    screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, HEIGHT // 2))
+    pygame.display.flip()
+    waiting_for_key = True
+    while waiting_for_key:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                waiting_for_key = False
+
+# Function to display game over screen
+def show_game_over_screen():
+    screen.fill((255, 255, 255))
+    game_over_text = font.render("Game Over", True, (255, 0, 0))
+    score_text = font.render(f"Kill Count: {kill_count}", True, (0, 0, 0))
+    restart_text = font.render("Press SPACE to restart", True, (0, 0, 0))
+    screen.blit(game_over_text, (WIDTH // 2 - game_over_text.get_width() // 2, HEIGHT // 3))
+    screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2))
+    screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, HEIGHT // 1.5))
+    pygame.display.flip()
+    waiting_for_key = True
+    while waiting_for_key:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                reset_game()
+                waiting_for_key = False
+
+# Function to reset the game state
+def reset_game():
+    global player_x, player_y, player_angle, player_health, last_hit_time, last_shot_time, bullets, special_active, last_special_time, zombies, healing_items, kill_count, game_over
+    player_x, player_y = WIDTH // 2, HEIGHT // 2
+    player_angle = 0
+    player_health = 100
+    last_hit_time = 0
+    last_shot_time = 0
+    bullets = []
+    special_active = False
+    last_special_time = 0
+    zombies = []
+    healing_items = []
+    kill_count = 0
+    game_over = False
+
+# Create initial zombies
+for _ in range(5):
+    create_zombie()
+
+# Initialize the screen
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Zombie Rampage: Undead Mayhem")
+
+clock = pygame.time.Clock()
+
+# FPS counter
+fps_font = pygame.font.Font(None, 24)
+
+# Game loop
+while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+
+    keys = pygame.key.get_pressed()
+
+    if not game_start:
+        show_start_screen()
+        game_start = True
+
+    if not game_over:
+        # Player movement and rotation
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            player_angle += 3
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            player_angle -= 3
+        if keys[pygame.K_UP] or keys[pygame.K_w]:
+            player_x += player_speed * math.cos(math.radians(player_angle))
+            player_y -= player_speed * math.sin(math.radians(player_angle))
+
+            # Prevent player from running off the screen
+            player_x = max(player_size // 2, min(WIDTH - player_size // 2, player_x))
+            player_y = max(player_size // 2, min(HEIGHT - player_size // 2, player_y))
+
+        # Shoot bullets
+        if keys[pygame.K_SPACE] and pygame.time.get_ticks() - last_shot_time > bullet_cooldown:
+            bullet_x = player_x + (player_size // 2) * math.cos(math.radians(player_angle))
+            bullet_y = player_y - (player_size // 2) * math.sin(math.radians(player_angle))
+            bullets.append((bullet_x, bullet_y, player_angle, False))
+            last_shot_time = pygame.time.get_ticks()
+
+        # Special ability: Speed boost with "H" key and a cooldown
+        if keys[pygame.K_h] and pygame.time.get_ticks() - last_special_time > special_cooldown:
+            last_special_time = pygame.time.get_ticks() + special_cooldown
+            special_active = True
+            player_speed *= 2  # Double the player speed during the special ability
+
+        # Update player health and check for hits from zombies
+        if pygame.time.get_ticks() - last_hit_time > player_hit_cooldown:
+            for zombie in zombies:
+                zx, zy, zs, zstrength = zombie
+                distance = math.hypot(player_x - zx, player_y - zy)
+                if distance < player_size // 2 + zs // 2:
+                    player_health -= 10
+                    last_hit_time = pygame.time.get_ticks()
+                    if player_health <= 0:
+                        player_health = 0
+                        game_over = True
+                        # Game over logic can be added here
+
+        # Create new zombies periodically, limited to a maximum of 7
+        if len(zombies) < 7 and random.random() < 0.01:
+            create_zombie()
+
+        # Trim excess zombies if the limit is exceeded
+        if len(zombies) > 7:
+            zombies = zombies[:7]
+
+        # Add healing items around the screen if player's health is not full
+        for _ in range(1):
+            if player_health < 100 and random.random() < 0.005:
+                create_healing_item()
+
+        # Update bullets
+        new_bullets = []
+        for bullet in bullets:
+            bullet_x, bullet_y, bullet_angle, hit_zombie = bullet
+            if not hit_zombie:
+                bullet_x += bullet_speed * math.cos(math.radians(bullet_angle))
+                bullet_y -= bullet_speed * math.sin(math.radians(bullet_angle))
+            new_bullets.append((bullet_x, bullet_y, bullet_angle, hit_zombie))
+
+        bullets = new_bullets
+
+        # Update zombies
+        for i, zombie in enumerate(zombies):
+            zombie_x, zombie_y, zombie_size, zombie_strength = zombie
+            angle_to_player = math.degrees(math.atan2(player_y - zombie_y, player_x - zombie_x))
+            zombie_x += 1 * math.cos(math.radians(angle_to_player))
+            zombie_y += 1 * math.sin(math.radians(angle_to_player))
+            zombies[i] = (zombie_x, zombie_y, zombie_size, zombie_strength)
+
+        # Check for collisions between bullets and zombies
+        for i, bullet in enumerate(bullets):
+            if not bullet[3]:
+                for j, zombie in enumerate(zombies):
+                    bx, by, _ = bullet[:3]
+                    zx, zy, zs, zstrength = zombie
+                    distance = math.hypot(bx - zx, by - zy)
+                    if distance < bullet_radius + zs / 2:
+                        bullets[i] = (bx, by, bullet[2], True)
+                        zombies[j] = (zx, zy, zs, zstrength - 1)
+                        if zstrength <= 0:
+                            zombies.pop(j)
+                            kill_count += 1
+                        bullets[i] = (0, 0, 0, True)
+                        break
+
+        # Remove bullets that hit zombies
+        bullets = [bullet for bullet in bullets if not bullet[3]]
+
+        # Check for collisions between player and healing items
+        for heal_item in healing_items:
+            heal_x, heal_y = heal_item
+            distance = math.hypot(player_x - heal_x, player_y - heal_y)
+            if distance < player_size // 2 + 10:
+                player_health = min(100, player_health + 20)
+                healing_items.remove(heal_item)
+
+        # Check for special ability duration
+        if special_active and pygame.time.get_ticks() > last_special_time + special_duration:
+            special_active = False
+            player_speed = 5  # Reset player speed to normal
+
+        # Draw background
+        screen.fill((255, 255, 255))
+
+        # Draw zombies
+        for zombie in zombies:
+            zx, zy, zs, zstrength = zombie
+            color = (255 - zstrength * 15, 0, zstrength * 25)
+            pygame.draw.rect(screen, color, (zx - zs // 2, zy - zs // 2, zs, zs))
+            nametag = font.render(str(zstrength), True, color)
+            screen.blit(nametag, (zx - zs // 2, zy - zs // 2 - 20))
+
+        # Draw bullets
+        for bullet in bullets:
+            bullet_x, bullet_y, _ = bullet[:3]
+            pygame.draw.circle(screen, (255, 0, 0), (int(bullet_x), int(bullet_y)), bullet_radius)
+
+        # Draw player
+        pygame.draw.rect(screen, (0, 0, 255), (player_x - player_size // 2, player_y - player_size // 2, player_size, player_size))
+
+        # Draw line representing player's view direction
+        view_length = 50
+        end_x = player_x + view_length * math.cos(math.radians(player_angle))
+        end_y = player_y - view_length * math.sin(math.radians(player_angle))
+        pygame.draw.line(screen, (0, 0, 255), (player_x, player_y), (end_x, end_y), 2)
+
+        # Draw player health bar
+        pygame.draw.rect(screen, (255, 0, 0), (10, 10, player_health * 2, 20))
+        pygame.draw.rect(screen, (0, 255, 0), (10, 10, 200, 20), 2)
+
+        # Draw special ability button area with cooldown indicator and label
+        pygame.draw.rect(screen, (200, 200, 200), (WIDTH - 250, HEIGHT - 50, 230, 30))
+        cooldown_percentage = max(0, min(1, (last_special_time - pygame.time.get_ticks()) / special_cooldown))
+        pygame.draw.rect(screen, (0, 255, 0), (WIDTH - 245, HEIGHT - 45, 220 * cooldown_percentage, 20))
+        special_label = font.render("Special Ability (H)", True, (0, 0, 0))
+        screen.blit(special_label, (WIDTH - 245, HEIGHT - 70))
+
+        # Draw kill counter
+        kill_counter_text = font.render(f"Kills: {kill_count}", True, (0, 0, 0))
+        screen.blit(kill_counter_text, (WIDTH - 150, 10))
+
+        # Draw healing items
+        for heal_item in healing_items:
+            heal_x, heal_y = heal_item
+            pygame.draw.circle(screen, (0, 255, 0), (int(heal_x), int(heal_y)), 10)
+
+    else:
+        show_game_over_screen()
+
+    # Draw FPS counter
+    fps_text = fps_font.render(f"FPS: {int(clock.get_fps())}", True, (0, 0, 0))
+    screen.blit(fps_text, (10, HEIGHT - 30))
+
+    # Update the display
+    pygame.display.flip()
+
+    # Cap the frame rate
+    clock.tick(FPS)
+```
